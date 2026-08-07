@@ -1,0 +1,645 @@
+"use client"
+import SettingsPanel from "@/components/admin/settings-panel"
+import { useEffect, useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Mail,
+  Folder,
+  Trash2,
+  Save,
+  RefreshCw,
+  Terminal,
+  Upload,
+  FileText,
+  Settings,
+} from "lucide-react"
+import { ProjectItem } from "@/components/admin/project-item"
+
+interface Message {
+  id: string
+  name: string
+  email: string
+  message: string
+  is_read: boolean
+  created_at: string
+}
+
+interface GitHubRepo {
+  id: number
+  name: string
+  full_name: string
+  description: string | null
+  html_url: string
+  language: string | null
+  topics: string[]
+}
+
+interface ProjectSettings {
+  id?: string
+  github_repo_name: string
+  is_visible: boolean
+  custom_description: string | null
+  image_url: string | null
+  video_url: string | null
+  display_order: number
+}
+
+export default function AdminPage() {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [repos, setRepos] = useState<GitHubRepo[]>([])
+  const [projectSettings, setProjectSettings] = useState<Map<string, ProjectSettings>>(new Map())
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [authChecking, setAuthChecking] = useState(true)
+  const [resumeUploading, setResumeUploading] = useState(false)
+  const [currentResume, setCurrentResume] = useState<string | null>(null)
+  const [resumeVersion, setResumeVersion] = useState(Date.now())
+
+  useEffect(() => {
+    checkAuth()
+  }, [])
+
+  async function checkAuth() {
+    try {
+      const res = await fetch("/api/auth/check")
+      if (res.ok) {
+        setIsAuthenticated(true)
+        fetchData()
+      } else {
+        window.location.href = "/auth/login"
+      }
+    } catch (error) {
+      console.error("Auth check failed", error)
+    } finally {
+      setAuthChecking(false)
+    }
+  }
+
+  async function fetchData() {
+    setLoading(true)
+    try {
+      // Fetch messages from local API
+      try {
+        const messagesResponse = await fetch("/api/admin/messages")
+        if (messagesResponse.ok) {
+          const messagesData = await messagesResponse.json()
+          setMessages(messagesData)
+        }
+      } catch (err) {
+        console.error("Failed to fetch messages", err)
+      }
+
+      // Fetch GitHub repos
+      const response = await fetch("https://api.github.com/users/Amanverma17/repos?sort=updated&per_page=50")
+      const reposData: GitHubRepo[] = await response.json()
+      setRepos(Array.isArray(reposData) ? reposData : [])
+
+      // Fetch project settings from local API
+      let settingsData: ProjectSettings[] = []
+      try {
+        const settingsResponse = await fetch("/api/projects")
+        if (settingsResponse.ok) {
+          const rawProjects = await settingsResponse.json()
+          settingsData = rawProjects.map((p: any) => ({
+            id: p._id,
+            github_repo_name: p.githubRepoName || p.title,
+            is_visible: p.isVisible,
+            custom_description: p.description,
+            image_url: p.imageUrl,
+            video_url: p.demoVideoUrl || null,
+            display_order: p.displayOrder || 0
+          }))
+        }
+      } catch (err) {
+        console.error("Failed to fetch settings", err)
+      }
+
+      const settingsMap = new Map<string, ProjectSettings>()
+      settingsData.forEach((s: ProjectSettings) => settingsMap.set(s.github_repo_name, s))
+
+      // Initialize settings for repos that don't have them
+      if (Array.isArray(reposData)) {
+        reposData.forEach((repo, index) => {
+          if (!settingsMap.has(repo.name)) {
+            settingsMap.set(repo.name, {
+              github_repo_name: repo.name,
+              is_visible: false,
+              custom_description: null,
+              image_url: null,
+              video_url: null,
+              display_order: index,
+            })
+          }
+        })
+      }
+
+      setProjectSettings(settingsMap)
+    } catch (error) {
+      console.error("Error fetching data:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function deleteMessage(id: string) {
+    try {
+      await fetch("/api/admin/messages", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      })
+      setMessages(messages.filter((m) => m.id !== id))
+    } catch (error) {
+      console.error("Failed to delete message", error)
+    }
+  }
+
+  async function markAsRead(id: string) {
+    try {
+      await fetch("/api/admin/messages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      })
+      setMessages(messages.map((m) => (m.id === id ? { ...m, is_read: true } : m)))
+    } catch (error) {
+      console.error("Failed to mark message as read", error)
+    }
+  }
+
+  function toggleVisibility(repoName: string) {
+    const settings = projectSettings.get(repoName)
+    if (settings) {
+      const newSettings = new Map(projectSettings)
+      newSettings.set(repoName, { ...settings, is_visible: !settings.is_visible })
+      setProjectSettings(newSettings)
+    }
+  }
+
+  function updateDescription(repoName: string, description: string) {
+    const settings = projectSettings.get(repoName)
+    if (settings) {
+      const newSettings = new Map(projectSettings)
+      newSettings.set(repoName, { ...settings, custom_description: description || null })
+      setProjectSettings(newSettings)
+    }
+  }
+
+  function updateImageURL(repoName: string, url: string) {
+    setProjectSettings((prev) => {
+      const newSettings = new Map(prev)
+      const settings = newSettings.get(repoName)
+      if (settings) {
+        newSettings.set(repoName, { ...settings, image_url: url })
+      }
+      return newSettings
+    })
+  }
+
+  async function handleImageUpload(repoName: string, file: File) {
+    if (!file) return
+
+    const formData = new FormData()
+    formData.append("file", file)
+
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || "Upload failed")
+      }
+
+      if (data.url) {
+        updateImageURL(repoName, data.url)
+      }
+    } catch (error: any) {
+      console.error("Error uploading image:", error)
+      alert(error.message || "Failed to upload image. Please use an external URL.")
+    }
+  }
+
+  function updateDisplayOrder(repoName: string, order: number) {
+    const settings = projectSettings.get(repoName)
+    if (settings) {
+      const newSettings = new Map(projectSettings)
+      newSettings.set(repoName, { ...settings, display_order: order })
+      setProjectSettings(newSettings)
+    }
+  }
+
+  function updateVideoURL(repoName: string, url: string) {
+    setProjectSettings((prev) => {
+      const newSettings = new Map(prev)
+      const settings = newSettings.get(repoName)
+      if (settings) {
+        newSettings.set(repoName, { ...settings, video_url: url || null })
+      }
+      return newSettings
+    })
+  }
+
+  async function saveProjectSettings() {
+    setSaving(true)
+    try {
+      // Get all settings and map to API schema
+      const projectsToSave = Array.from(projectSettings.values()).map(settings => {
+        const repo = repos.find(r => r.name === settings.github_repo_name);
+        return {
+          title: settings.github_repo_name,
+          description: settings.custom_description || repo?.description || "No description",
+          imageUrl: settings.image_url || null,
+          demoVideoUrl: settings.video_url || null,
+          technologies: repo?.topics || [], // Map topics to technologies
+          githubUrl: repo?.html_url,
+          githubRepoName: settings.github_repo_name,
+          isVisible: settings.is_visible,
+          displayOrder: settings.display_order
+        };
+      });
+
+      console.log("Saving project settings:", projectsToSave);
+
+      const response = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(projectsToSave),
+      })
+
+      if (response.ok) {
+        alert("Settings saved successfully!")
+      } else {
+        throw new Error("Failed to save")
+      }
+    } catch (error) {
+      console.error("Error saving settings:", error)
+      alert("Error saving settings")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" })
+    window.location.href = "/"
+  }
+
+  async function handleResumeUpload(file: File) {
+    if (!file || !file.name.endsWith('.pdf')) {
+      alert('Please upload a PDF file')
+      return
+    }
+
+    setResumeUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const res = await fetch('/api/admin/resume', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        setCurrentResume(data.filename)
+        setResumeVersion(Date.now())
+        alert('Resume uploaded successfully!')
+      } else {
+        const data = await res.json()
+        throw new Error(data.error || 'Upload failed')
+      }
+    } catch (error: any) {
+      console.error('Error uploading resume:', error)
+      alert(error.message || 'Failed to upload resume')
+    } finally {
+      setResumeUploading(false)
+    }
+  }
+
+  // Check current resume on load
+  useEffect(() => {
+    fetch('/api/admin/resume')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.filename) setCurrentResume(data.filename)
+      })
+      .catch(() => { })
+  }, [isAuthenticated])
+
+  if (authChecking) {
+    return <div className="min-h-screen flex items-center justify-center font-mono">Loading...</div>
+  }
+
+  if (!isAuthenticated) {
+    return null // Redirecting
+  }
+
+  const visibleProjects = Array.from(projectSettings.entries())
+    .filter(([, settings]) => settings.is_visible)
+    .sort((a, b) => a[1].display_order - b[1].display_order)
+
+  const unreadCount = messages.filter((m) => !m.is_read).length
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="border-b border-border bg-foreground text-background">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Terminal className="h-6 w-6" />
+              <h1 className="font-mono text-xl font-bold uppercase tracking-wider">
+                Admin Dashboard
+              </h1>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => (window.location.href = "/")}
+                className="font-mono text-xs uppercase border-black text-black hover:bg-black hover:text-white"
+              >
+                View Site
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleLogout}
+                className="font-mono text-xs uppercase"
+              >
+                Logout
+              </Button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="container mx-auto px-6 py-8">
+        <Tabs defaultValue="projects" className="space-y-6">
+          <TabsList className="bg-muted border border-border">
+            <TabsTrigger value="projects" className="font-mono text-sm uppercase gap-2">
+              <Folder className="h-4 w-4" />
+              Projects
+            </TabsTrigger>
+            <TabsTrigger value="messages" className="font-mono text-sm uppercase gap-2">
+              <Mail className="h-4 w-4" />
+              Messages {unreadCount > 0 && `(${unreadCount})`}
+            </TabsTrigger>
+            <TabsTrigger value="resume" className="font-mono text-sm uppercase gap-2">
+              <FileText className="h-4 w-4" />
+              Resume
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="font-mono text-sm uppercase gap-2">
+              <Settings className="h-4 w-4" />
+              Settings
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Messages Tab */}
+          <TabsContent value="messages" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-mono text-lg font-bold uppercase tracking-wider">
+                Inbox Messages
+              </h2>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchData}
+                className="font-mono text-xs uppercase bg-transparent"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+            </div>
+
+            {loading ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="border border-border p-4 animate-pulse">
+                    <div className="h-4 bg-muted rounded w-1/3 mb-2" />
+                    <div className="h-3 bg-muted rounded w-full" />
+                  </div>
+                ))}
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="border border-border p-8 text-center">
+                <p className="font-mono text-muted-foreground">No messages yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`border p-4 ${msg.is_read
+                      ? "border-border bg-background"
+                      : "border-foreground bg-muted"
+                      }`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="font-mono text-sm font-bold text-foreground">
+                            {msg.name} ({msg.email})
+                          </span>
+                          {!msg.is_read && (
+                            <span className="font-mono text-xs bg-foreground text-background px-2 py-0.5">
+                              NEW
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          {msg.message}
+                        </p>
+                        <p className="font-mono text-xs text-muted-foreground mt-2">
+                          {new Date(msg.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        {!msg.is_read && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => markAsRead(msg.id)}
+                            className="font-mono text-xs"
+                          >
+                            Mark Read
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => deleteMessage(msg.id)}
+                          className="font-mono text-xs text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Projects Tab */}
+          <TabsContent value="projects" className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="font-mono text-lg font-bold uppercase tracking-wider">
+                GitHub Projects Visibility
+              </h2>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchData}
+                  className="font-mono text-xs uppercase bg-transparent"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Refresh
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={saveProjectSettings}
+                  disabled={saving}
+                  className="font-mono text-xs uppercase bg-foreground text-background hover:bg-foreground/90"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {saving ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </div>
+
+            {/* Visible Projects Preview */}
+            {visibleProjects.length > 0 && (
+              <div className="border border-foreground bg-muted p-4">
+                <h3 className="font-mono text-sm font-bold uppercase mb-3">
+                  Currently Visible ({visibleProjects.length})
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {visibleProjects.map(([name]) => (
+                    <span
+                      key={name}
+                      className="font-mono text-xs bg-foreground text-background px-2 py-1"
+                    >
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {loading ? (
+              <div className="space-y-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="border border-border p-4 animate-pulse">
+                    <div className="h-5 bg-muted rounded w-1/3 mb-2" />
+                    <div className="h-3 bg-muted rounded w-full" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {repos.map((repo, index) => {
+                  const settings = projectSettings.get(repo.name)
+                  return (
+                    <ProjectItem
+                      key={repo.id}
+                      repo={repo}
+                      settings={settings}
+                      index={index}
+                      onToggleVisibility={toggleVisibility}
+                      onUpdateDescription={updateDescription}
+                      onUpdateImageURL={updateImageURL}
+                      onUpdateVideoURL={updateVideoURL}
+                      onUpdateDisplayOrder={updateDisplayOrder}
+                      onImageUpload={handleImageUpload}
+                    />
+                  )
+                })}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Resume Tab */}
+          <TabsContent value="resume" className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="font-mono text-lg font-bold uppercase tracking-wider">
+                Resume Management
+              </h2>
+            </div>
+
+            {/* Current Resume Status */}
+            <div className="border border-foreground bg-muted p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <FileText className="h-5 w-5 text-foreground" />
+                <h3 className="font-mono text-sm font-bold uppercase">
+                  Current Resume
+                </h3>
+              </div>
+              {currentResume ? (
+                <div className="flex items-center gap-4">
+                  <span className="font-mono text-sm text-muted-foreground">
+                    📄 {currentResume}
+                  </span>
+                  <button
+                    onClick={() => window.open(`/api/resume?t=${resumeVersion}`, '_blank')}
+                    className="font-mono text-xs uppercase tracking-wider text-muted-foreground"
+                  >
+                    Preview
+                  </button>
+                </div>
+              ) : (
+                <p className="font-mono text-sm text-muted-foreground">No resume uploaded yet.</p>
+              )}
+            </div>
+
+            {/* Upload New Resume */}
+            <div className="border border-border p-6">
+              <h3 className="font-mono text-sm font-bold uppercase mb-4">
+                Upload New Resume
+              </h3>
+              <div
+                className="border-2 border-dashed border-foreground/30 p-8 text-center hover:border-foreground/60 transition-colors cursor-pointer"
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const file = e.dataTransfer.files[0];
+                  if (file) handleResumeUpload(file);
+                }}
+                onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = '.pdf';
+                  input.onchange = (e) => {
+                    const file = (e.target as HTMLInputElement).files?.[0];
+                    if (file) handleResumeUpload(file);
+                  };
+                  input.click();
+                }}
+              >
+                <Upload className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
+                <p className="font-mono text-sm text-foreground mb-1">
+                  {resumeUploading ? 'Uploading...' : 'Click or drag & drop to upload'}
+                </p>
+                <p className="font-mono text-xs text-muted-foreground">
+                  PDF files only • This will replace the current resume
+                </p>
+              </div>
+            </div>
+          </TabsContent>
+          <TabsContent value="settings">
+            <SettingsPanel />
+          </TabsContent>
+        </Tabs>
+      </main>
+    </div>
+  )
+}
