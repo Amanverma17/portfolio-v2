@@ -116,9 +116,9 @@ The portfolio is designed around a simple **terminal-inspired, monochrome aesthe
 ## 🤝 Connect With Me
 
 * 🌐 Portfolio: https://amanverma17.vercel.app
-* 💻 GitHub: YOUR_GITHUB_URL
-* 💼 LinkedIn: YOUR_LINKEDIN_URL
-* 🧩 LeetCode: YOUR_LEETCODE_URL
+* 💻 GitHub: https://github.com/Amanverma17
+* 💼 LinkedIn: https://linkedin.com/in/aman-verma-r-87601134b
+* 🧩 LeetCode: https://leetcode.com/u/amanverma17/
 
 ---
 
