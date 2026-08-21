@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import dns from 'dns';
 
 const MONGODB_URI = process.env.MONGODB_URI;
 
@@ -7,6 +8,10 @@ if (!MONGODB_URI) {
         'Please define the MONGODB_URI environment variable inside .env.local'
     );
 }
+
+// Use Google DNS for this Node.js application only.
+// This does NOT change your laptop's DNS settings.
+dns.setServers(['8.8.8.8', '8.8.4.4']);
 
 /**
  * Global is used here to maintain a cached connection across hot reloads
@@ -38,9 +43,11 @@ async function dbConnect() {
             bufferCommands: false,
         };
 
-        cached.promise = mongoose.connect(MONGODB_URI!, opts).then((mongoose) => {
-            return mongoose;
-        });
+        cached.promise = mongoose
+            .connect(MONGODB_URI!, opts)
+            .then((mongoose) => {
+                return mongoose;
+            });
     }
 
     try {

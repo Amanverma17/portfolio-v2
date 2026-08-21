@@ -12,6 +12,8 @@ interface ProjectItemProps {
     repo: any
     settings: any
     index: number
+    onUpdateTechnologies: (name: string, technologies: string[]) => void
+    onUpdateAboutProject: (name: string, value: string) => void
     onToggleVisibility: (name: string) => void
     onUpdateDescription: (name: string, value: string) => void
     onUpdateImageURL: (name: string, value: string) => void
@@ -24,18 +26,20 @@ export const ProjectItem = memo(function ProjectItem({
     repo,
     settings,
     index,
+    onUpdateAboutProject,
     onToggleVisibility,
     onUpdateDescription,
     onUpdateImageURL,
     onUpdateVideoURL,
+    onUpdateTechnologies,
     onUpdateDisplayOrder,
     onImageUpload,
 }: ProjectItemProps) {
     return (
         <div
             className={`border p-4 ${settings?.is_visible
-                    ? "border-foreground bg-muted"
-                    : "border-border bg-background"
+                ? "border-foreground bg-muted"
+                : "border-border bg-background"
                 }`}
         >
             <div className="flex items-start gap-4">
@@ -80,6 +84,26 @@ export const ProjectItem = memo(function ProjectItem({
                                     placeholder="Override the GitHub description..."
                                     className="font-mono text-sm"
                                 />
+                            </div>
+
+                            <div className="grid gap-2">
+                                <label className="font-mono text-xs uppercase text-muted-foreground">
+                                    About This Project
+                                </label>
+
+                                <textarea
+                                    value={settings?.about_project || ""}
+                                    onChange={(e) =>
+                                        onUpdateAboutProject(repo.name, e.target.value)
+                                    }
+                                    placeholder="Write a detailed description of the project..."
+                                    rows={6}
+                                    className="w-full border border-border bg-background px-3 py-2 font-mono text-sm text-foreground resize-y focus:outline-none focus:ring-1 focus:ring-foreground"
+                                />
+
+                                <p className="font-mono text-xs text-muted-foreground">
+                                    Detailed explanation shown on the project detail page.
+                                </p>
                             </div>
 
                             <div className="grid gap-2">
@@ -130,6 +154,45 @@ export const ProjectItem = memo(function ProjectItem({
                                     </p>
                                 )}
                             </div>
+
+                            {/* ADD TECHNOLOGIES HERE */}
+                            <div className="grid gap-2">
+                                <label className="font-mono text-xs uppercase text-muted-foreground">
+                                    Technologies
+                                </label>
+
+                                <Input
+                                    value={(settings?.technologies || []).join(", ")}
+                                    onChange={(e) => {
+                                        const technologies = e.target.value
+                                            .split(",")
+                                            .map((tech: string) => tech.trim())
+                                            .filter(Boolean)
+
+                                        onUpdateTechnologies(repo.name, technologies)
+                                    }}
+                                    placeholder="Java, Spring Boot, PostgreSQL, Hibernate, JWT"
+                                    className="font-mono text-sm"
+                                />
+
+                                <p className="font-mono text-xs text-muted-foreground">
+                                    Separate technologies with commas.
+                                </p>
+
+                                {settings?.technologies?.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {settings.technologies.map((tech: string) => (
+                                            <span
+                                                key={tech}
+                                                className="font-mono text-xs border border-foreground px-2 py-1"
+                                            >
+                                                {tech}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
 
                             <div className="flex items-center gap-2">
                                 <label className="font-mono text-xs uppercase text-muted-foreground">

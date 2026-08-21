@@ -40,11 +40,12 @@ interface ProjectSettings {
   github_repo_name: string
   is_visible: boolean
   custom_description: string | null
+  about_project: string | null
   image_url: string | null
   video_url: string | null
+  technologies: string[]
   display_order: number
 }
-
 export default function AdminPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [repos, setRepos] = useState<GitHubRepo[]>([])
@@ -107,8 +108,10 @@ export default function AdminPage() {
             github_repo_name: p.githubRepoName || p.title,
             is_visible: p.isVisible,
             custom_description: p.description,
+            about_project: p.aboutProject || null,
             image_url: p.imageUrl,
             video_url: p.demoVideoUrl || null,
+            technologies: p.technologies || [],
             display_order: p.displayOrder || 0
           }))
         }
@@ -127,8 +130,10 @@ export default function AdminPage() {
               github_repo_name: repo.name,
               is_visible: false,
               custom_description: null,
+              about_project: null,
               image_url: null,
               video_url: null,
+              technologies: [],
               display_order: index,
             })
           }
@@ -185,6 +190,22 @@ export default function AdminPage() {
       newSettings.set(repoName, { ...settings, custom_description: description || null })
       setProjectSettings(newSettings)
     }
+  }
+
+  function updateAboutProject(repoName: string, aboutProject: string) {
+    setProjectSettings((prev) => {
+      const newSettings = new Map(prev)
+      const settings = newSettings.get(repoName)
+
+      if (settings) {
+        newSettings.set(repoName, {
+          ...settings,
+          about_project: aboutProject || null,
+        })
+      }
+
+      return newSettings
+    })
   }
 
   function updateImageURL(repoName: string, url: string) {
@@ -245,6 +266,22 @@ export default function AdminPage() {
     })
   }
 
+  function updateTechnologies(repoName: string, technologies: string[]) {
+    setProjectSettings((prev) => {
+      const newSettings = new Map(prev)
+      const settings = newSettings.get(repoName)
+
+      if (settings) {
+        newSettings.set(repoName, {
+          ...settings,
+          technologies,
+        })
+      }
+
+      return newSettings
+    })
+  }
+
   async function saveProjectSettings() {
     setSaving(true)
     try {
@@ -253,14 +290,25 @@ export default function AdminPage() {
         const repo = repos.find(r => r.name === settings.github_repo_name);
         return {
           title: settings.github_repo_name,
-          description: settings.custom_description || repo?.description || "No description",
+
+          description:
+            settings.custom_description ||
+            repo?.description ||
+            "No description",
+
+          aboutProject:
+            settings.about_project || "",
+
           imageUrl: settings.image_url || null,
+
           demoVideoUrl: settings.video_url || null,
-          technologies: repo?.topics || [], // Map topics to technologies
+
+          technologies: settings.technologies || [],
+
           githubUrl: repo?.html_url,
           githubRepoName: settings.github_repo_name,
           isVisible: settings.is_visible,
-          displayOrder: settings.display_order
+          displayOrder: settings.display_order,
         };
       });
 
@@ -554,10 +602,12 @@ export default function AdminPage() {
                       repo={repo}
                       settings={settings}
                       index={index}
+                      onUpdateAboutProject={updateAboutProject}
                       onToggleVisibility={toggleVisibility}
                       onUpdateDescription={updateDescription}
                       onUpdateImageURL={updateImageURL}
                       onUpdateVideoURL={updateVideoURL}
+                      onUpdateTechnologies={updateTechnologies}
                       onUpdateDisplayOrder={updateDisplayOrder}
                       onImageUpload={handleImageUpload}
                     />

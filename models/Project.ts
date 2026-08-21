@@ -10,6 +10,10 @@ const ProjectSchema = new mongoose.Schema({
         type: String,
         required: [true, 'Please provide a description for this project.'],
     },
+    aboutProject: {
+        type: String,
+        default: "",
+    },
     imageUrl: {
         type: String,
         // Made optional as it might not be available immediately from GitHub
