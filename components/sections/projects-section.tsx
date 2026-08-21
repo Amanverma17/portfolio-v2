@@ -141,7 +141,7 @@ export function ProjectsSection() {
                     src={getProjectImage(project, index) || "/placeholder.svg"}
                     alt={project.name}
                     fill
-                    className="object-cover grayscale group-hover:grayscale-0 transition-all duration-500"
+                    className="object-cover grayscale-0 md:grayscale md:group-hover:grayscale-0 transition-all duration-500"
                   />
 
                   {/* Hover overlay */}
